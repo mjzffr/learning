@@ -13,9 +13,7 @@ def start_server():
     # become a server socket, max k=1 connect requests can be in queue
     serversocket.listen(1)
 
-    #echo server
-    #while True:
-    # accept one connection from outside
+    # accept one connection from outside; echo until client says 'exit'
     (clientsocket, address) = serversocket.accept()
     print 'Connection from' + str(address)
     clientsocket.send('Hello!\n')
@@ -27,7 +25,7 @@ def start_server():
             break
         else:
             print msg
-    clientsocket.close()
+    serversocket.close()
     exit()
 
 if __name__ == "__main__":
