@@ -6,7 +6,7 @@ import sys
 import errno
 
 '''
-idea: lots of clients (e.g use netcat) can connect to this server
+idea: lots of clients can connect to this server
 and the server will echo what client k sends to all clients. 
 (A chat server!)
 (learning goal: reimplement what tom demo'ed the other day)
@@ -21,60 +21,7 @@ HOST = 'localhost'
 PORT = 50000
 SIZE = 1024
 
-def bind_listening_socket():
-    print "Server on"
-    # default params are INET and STREAM
-    s = socket.socket()
-    #prevent the "already in use error"
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # TODO: bind raises an exception if port is already in use
-    s.bind((HOST, PORT))
-    s.listen(5)
-
-    return s
-
-# Exploring non-blocking sockets
-def start_terrible_server():
-    '''To accept many connections on blocking sockets, need threads.
-    This is why I make the sockets non-blocking; otherwise the main loop
-    will get stuck.
-    '''
-
-    clients = []
-    listener = bind_listening_socket()
-    listener.setblocking(False)
-
-    # accept client connections
-    while True:
-            # s is non-blocking so it won't get stuck
-        try:
-            #but accept() will raise "resource temporarily unavailable"
-            # if there's nothing trying to connect?
-            clientsocket, address = listener.accept()
-            #recv is also blocking, so we need the clients to be non-blocking too
-            clientsocket.setblocking(False)           
-            clients.append(clientsocket)
-            clientsocket.send("Hello to " + str(address) + '\n')
-        except socket.error as e:
-            # we're ignoring the exception because the point of this
-            # terrible server is to keep looping until a connection is made
-            print e
-
-        # collect a message from each client, if available
-        for cur_client in clients:
-            msg = ''
-            try:
-                msg = cur_client.recv(SIZE)
-            except socket.error as e:
-                # same idea as exception above: this is the point
-                # of this terrible server
-                print e
-            if msg != '':
-                # and send the message to everyone
-                for otherclient in clients:
-                    if otherclient is not cur_client:
-                        otherclient.send(msg) 
-
+# for debugging
 def print_sockets(list):
     print '[',
     for l in list:
@@ -86,14 +33,15 @@ def print_sockets(list):
     print ']'
 
 def start_client():
+    # We could use select for connecting, too, but we assume that the server
+    # will be available. If we did use select, s would go into the writers list. 
     s = socket.socket()
     s.connect((HOST,PORT))
-    # A port is assigned to s after the above connection is established
+    # A port is assigned to s *after* the above connection is established
     (s_ip, s_port) = s.getsockname()
-    readables = [s, sys.stdin]
 
     while True:
-        ready_rds, _, _ = select.select(readables, [], [])
+        ready_rds, _, _ = select.select([s, sys.stdin], [], [])
         for input in ready_rds:
             if input is sys.stdin:
                 line = sys.stdin.readline()
@@ -102,7 +50,7 @@ def start_client():
                     # "If you want to close a connection in a timely fashion
                     # call shutdown() before close(). This doesn't really help
                     # the exceptions I encounter though."
-                    s.shutdown(socket.SHUT_RDWR)
+                    #s.shutdown(socket.SHUT_RDWR)
                     s.close()
                     sys.exit()
                 s.send(str(s_port) + ": " + line)
@@ -125,25 +73,30 @@ def display_prompt():
     immediately, so flush. Same problem with print''' 
     sys.stdout.flush()
 
-
-class NicerServer:
-    def __init__(self, listener):
+class Server:
+    def __init__(self):
         self.readables = []
         self.writables = []
         self.allsockets = []
-        self.listener = listener
 
     def run(self):
+        # default params are INET and STREAM
+        listener = socket.socket()
+        #prevent the "already in use error"
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # TODO: bind raises an exception if port is already in use
+        listener.bind((HOST, PORT))
+        listener.listen(5)
+        print "Server on"
+        
         ''' Uses select to only handle sockets that are ready/available.'''
 
         '''listening socket should be examined by select too so that it doesn't
             block on "accept".
             Including stdin to allow 'exit' command on server side
-            (readline() is also blocking) '''
-        self.readables = [self.listener,sys.stdin]
-        self.allsockets = [self.listener]
-        # Outgoing messages (socket:string)
-        #message_queues = {}
+            (readline() is also blocking) but this won't work on Windows'''
+        self.readables = [listener, sys.stdin]
+        self.allsockets = [listener]
         
         while True:
             ''' 
@@ -155,64 +108,68 @@ class NicerServer:
             * I originally used select to only monitor readable streams 
             (ready_inputs). This is bad because clients in this list are not 
             necessarily ready to be sent to, so now I also keep track of the 
-            writeable streams in ready_recipients. I did this because I was running 
-            into a socket error after a client disconnected; according to select, 
-            the disconnected client was still ready for reading.
+            writeable streams in ready_recipients. I did this because I was 
+            running into a socket error after a client disconnected; according 
+            to select, the disconnected client was still ready for reading.
             * Select doesn't actually detect if a connection is closed! It just 
-            monitors if there is data available to be read/if there is room in the
-            object's buffer to write. (I think.)
+            monitors if there is data available to be read/if there is room in 
+            the object's buffer to write. (I think.)
 
             questions:
-            * when using select, does it matter whether the sockets are blocking or
-            non-blocking? My impression is that select prevents you from having to
-            use non-blocking sockets.
+            * when using select, does it matter whether the sockets are blocking
+            or non-blocking? My impression is that select prevents you from 
+            having to use non-blocking sockets.
+            A: Actually, select is used more with non-blocking sockets because
+            it handles the case where send, recv, connect, accept return without
+            having done anything. However, "select can be handy even 
+            with blocking sockets. It's one way of determining whether you will 
+            block - the socket returns as readable when there's something in the
+            buffers. However, this still doesn't help with the problem of 
+            determining whether the other end is done, or just busy with 
+            something else." (http://docs.python.org/3/howto/sockets.html)
             '''
 
             # wait for at least one of the sockets to be ready
-            # print "Readable"
-            # print_sockets(self.readables)
-            # print "Writable"
-            # print_sockets(self.writables)
-            # print "All Sockets"
-            # print_sockets(self.allsockets)
             ready_rds, ready_wrs, exceptional = \
-                select.select(self.readables, self.writables, self.allsockets)
+            select.select(self.readables, self.writables, self.allsockets, 60)
 
             # Process incoming data
             for input in ready_rds:
                 # accept a client connection
-                if input is self.listener:
-                    clientsocket, address = self.listener.accept()
-                    self.readables.append(clientsocket)
-                    self.writables.append(clientsocket)
-                    self.allsockets.append(clientsocket)
+                if input is listener:
+                    clientsocket, address = listener.accept()
+                    for iolist in [self.readables, self.writables, \
+                    self.allsockets]:
+                        iolist.append(clientsocket)
                     # assuming that the accept() call was successful
                     clientsocket.send("Hello to " + str(address) + '\n')
                 elif input is sys.stdin:
                     if (sys.stdin.readline()).strip() == 'exit':
                         # (?): assume that client is responsible for closing
                         # its connection
-                        self.listener.close()
+                        listener.close()
                         print "Server off"
                         sys.exit()
                 # collect a message from each ready client
-                else: self.relay_msg(input, ready_wrs)
+                else: self.broadcast_msg(input, ready_wrs)
 
             # disconnect from any other errorful clients
-            #if exceptional: print_sockets(exceptional)
+            # (One "normally" leaves the error list in select empty
+            # according to http://docs.python.org/3/howto/sockets.html)
             for s in exceptional:
-                for list in [self.readables, self.writables, self.allsockets]:
-                    if s in list:
-                        list.remove(s)
+                for iolist in [self.readables, self.writables, self.allsockets]:
+                    if s in iolist:
+                        iolist.remove(s)
                 s.close()
         
-    def relay_msg(self, source, destinations):
-        ''' Send message from source to all other clients in destinations list
+    def broadcast_msg(self, source, destinations):
+        ''' Send message from source to all other clients in destinations list.
+        `destinations` is the result of a select call: if a client wasn't ready
+        at that moment, it will never receive this message!
         '''
         msg = source.recv(SIZE)
         if msg:
             for recipient in destinations:
-                #print_sockets(destinations) 
                 if recipient is not source:
                     try:
                         recipient.send(msg)
@@ -238,11 +195,8 @@ class NicerServer:
         s.close()
 
 
-                
-
-
 if __name__ == "__main__":
     if len(sys.argv) == 2 and sys.argv[1] == 'client':
         start_client()
     else:
-        NicerServer(bind_listening_socket()).run()
+        Server().run()
