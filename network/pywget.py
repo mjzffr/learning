@@ -27,11 +27,16 @@ def parse_cmdline():
 
 
 def parse_httpresponse(firstpiece):
-    ''' Returns a tuple (headers, data) where headers is a str:str dictionary
-    and data is a str of first part of data. `firstpiece` contains first few 
-    bytes of response received as a string.'''
-    if firstpiece.find(DELIMITER * 2) == -1 or \
-        not firstpiece.startswith('HTTP'):
+    ''' Returns a tuple (headers, data) where `headers` is a str:str dictionary
+    and data is a str of the data after the headers. str `firstpiece` contains 
+    first few bytes of response received.'''
+    
+    if not firstpiece:
+        # result of recv call was empty
+        stop("Connection lost!")
+
+    if (firstpiece.find(DELIMITER * 2) == -1 or 
+        not firstpiece.startswith('HTTP')):
         stop("Not an HTTP response?!")
         
     # identify the different parts of the response
@@ -53,8 +58,10 @@ def parse_httpresponse(firstpiece):
 def download(url, filename):
     # connect to the web server on port 80: this socket will be used
     # for one request and one reply and then be destroyed
-    # TODO: add exception handling; what if the connection is unsuccessful?
-    CONNECTION.connect((url.domain, 80))
+    try:
+        CONNECTION.connect((url.domain, 80))
+    except socket.gaierror as e:
+        stop(str(e) + ": " + url.domain)
 
     request =   "GET " + url.path + " HTTP/1.1" + DELIMITER + \
                 "User-Agent: pywget (linux-gnu)" + DELIMITER + \
