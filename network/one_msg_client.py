@@ -1,8 +1,8 @@
 #!/usr/bin/env python2
 import socket
-
+# test with nc -l localhost -p 12345
 def send_one_message():
-    
+    print 'connecting to localhost at port 12345'
     # create an INET, STREAMing socket
     clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     clientsocket.connect(('localhost', 12345))

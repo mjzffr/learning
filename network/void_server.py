@@ -1,10 +1,8 @@
 #!/usr/bin/env python2
 import socket
 
-# recall: use netcat localhost 12345 to test if the server works
-
 def start_server():
-    
+    print 'run `nc localhost 12345` from another terminal to connect'
     # create an INET, STREAMing socket
     serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # bind the socket to a public host, using localhost instead of
@@ -13,7 +11,7 @@ def start_server():
     # become a server socket, max k=1 connect requests can be in queue
     serversocket.listen(1)
 
-    # accept one connection from outside; echo until client says 'exit'
+    # accept one connection from outside; print until client says 'exit'
     (clientsocket, address) = serversocket.accept()
     print 'Connection from' + str(address)
     clientsocket.send('Hello!\n')
