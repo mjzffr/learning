@@ -7,3 +7,4 @@ Using the `socket` library in Python!
 * http://pymotw.com/2/select/
 * http://ilab.cs.byu.edu/python/
 * [Book: Foundations of Python Network Programming](http://www.apress.com/9781430230038)
+* https://synack.me/blog/using-python-tcp-sockets
