@@ -20,8 +20,10 @@ def parse_cmdline():
         # URL object stores domain and path separately
         url = URL(urlString)
         filename = os.path.basename(url.path)
-        if filename: download(url, filename) 
-        else: print 'URL does not specify a file.'
+        if filename: 
+            download(url, filename) 
+        else: 
+            print 'URL does not specify a file.'
     else: 
         print usage
 
@@ -63,16 +65,15 @@ def download(url, filename):
     except socket.gaierror as e:
         stop(str(e) + ": " + url.domain)
 
-    request =   "GET " + url.path + " HTTP/1.1" + DELIMITER + \
-                "User-Agent: pywget (linux-gnu)" + DELIMITER + \
-                "Accept: */*" + DELIMITER  + \
-                "Host: " + url.domain + DELIMITER + \
-                "Connection: Keep-Alive" + DELIMITER * 2           
+    request =  ("GET " + url.path + " HTTP/1.1" + DELIMITER + 
+                "User-Agent: pywget (linux-gnu)" + DELIMITER + 
+                "Accept: */*" + DELIMITER  + 
+                "Host: " + url.domain + DELIMITER + 
+                "Connection: Keep-Alive" + DELIMITER * 2)           
 
     CONNECTION.send(request)
 
     # distinguish http response from its payload
-    # what recv returns nothing?! TODO
     (headers, data) = parse_httpresponse(CONNECTION.recv(1024))
 
     try:
