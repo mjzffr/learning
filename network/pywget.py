@@ -6,7 +6,11 @@ import socket
 import math
 # I'm not using urlib on purpose!
 
-def parse_input():
+DELIMITER = '\r\n'
+CONNECTION = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+
+def parse_cmdline():
     usage = "Usage:" + sys.argv[0] + " URL. URL must start with 'http://'"
     if '-h' in sys.argv or 'help' in sys.argv:
         print usage
@@ -21,64 +25,65 @@ def parse_input():
     else: 
         print usage
 
+
+def parse_httpresponse(firstpiece):
+    ''' Returns a tuple (headers, data) where headers is a str:str dictionary
+    and data is a str of first part of data. `firstpiece` contains first few 
+    bytes of response received as a string.'''
+    if firstpiece.find(DELIMITER * 2) == -1 or \
+        not firstpiece.startswith('HTTP'):
+        stop("Not an HTTP response?!")
+        
+    # identify the different parts of the response
+    (httpresponse, data) = tuple(firstpiece.split(DELIMITER * 2, 1))
+    (codestring,headerstring) = tuple(httpresponse.split(DELIMITER,1))
+
+    # check for 200 OK
+    if codestring.find('200') == -1:
+        stop(codestring)
+
+    # dictionary of headers, e.g. 'Content-Type':'text/html'
+    headers = {h[0].strip(): h[1].strip() for h in \
+        [i.split(':', 1) for i in headerstring.split(DELIMITER) if \
+         i.find(':') != -1]}
+
+    return (headers, data)
+    
+
 def download(url, filename):
-    ''' downloads file pointed to by URL `url` to str `filename` '''
-    DELIMITER = '\r\n'
-    # create an INET, STREAMing socket
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # connect to the web server on port 80: this socket will be used
     # for one request and one reply and then be destroyed
+    # TODO: add exception handling; what if the connection is unsuccessful?
+    CONNECTION.connect((url.domain, 80))
 
-    # TODO: add exception handling; what if the connection is unsuccessful
-    s.connect((url.domain, 80))
-
-    # construct an HTTP request
     request =   "GET " + url.path + " HTTP/1.1" + DELIMITER + \
                 "User-Agent: pywget (linux-gnu)" + DELIMITER + \
                 "Accept: */*" + DELIMITER  + \
                 "Host: " + url.domain + DELIMITER + \
                 "Connection: Keep-Alive" + DELIMITER * 2           
 
-    s.send(request)
+    CONNECTION.send(request)
 
     # distinguish http response from its payload
-    firstpiece = s.recv(1024)
-    if firstpiece.find(DELIMITER * 2) == -1 or \
-        not firstpiece.startswith('HTTP'):
-        print "Not an HTTP response?!"
-        s.close()
-        sys.exit()
-        
-    # parse the response
-    (httpresponse, data) = tuple(firstpiece.split(DELIMITER * 2, 1))
-    (codestring,headerstring) = tuple(httpresponse.split(DELIMITER,1))
+    # what recv returns nothing?! TODO
+    (headers, data) = parse_httpresponse(CONNECTION.recv(1024))
 
-    # check response codes TODO
-    if codestring.find('200') == -1:
-        print codestring
-        s.close()
-        sys.exit()
-
-    headerlist = headerstring.split(DELIMITER)
-    headers = {h[0].strip(): h[1].strip() for h in \
-        [i.split(':', 1) for i in headerlist if i.find(':') != -1]}
-
-    
-    # get content length
     try:
-        total_size = int(headers['Content-Length'])
+        writefile(data, int(headers['Content-Length']), filename)
     except KeyError as e:
-        print str(e) + ' not found'
-        s.close()
-        sys.exit()
+        stop(str(e) + ' not found')
 
-    # download pieces
-    filename = os.path.basename(url.path)
+    CONNECTION.close()
+
+
+def writefile(data, total_size, filename):
+    ''' saves downloaded data to `filename`. There might be some initial data in
+    `data'''
     downloaded = len(data)
     with open(filename, 'w') as fp:
         fp.write(data)
         while downloaded < total_size:
-            data = s.recv(4096)
+            data = CONNECTION.recv(4096)
             if not data:
                 print 'Connection lost?'
                 break
@@ -86,12 +91,12 @@ def download(url, filename):
             print str(int(math.floor(float(downloaded) / \
                 total_size * 100))) + '%'
             fp.write(data)
-        
-    s.close()
 
 
-def get_progress_str():
-    pass
+def stop(msg):
+    print msg
+    CONNECTION.close()
+    sys.exit()
 
 
 class URL:
@@ -109,4 +114,4 @@ class URL:
         return 'domain: [' + self.domain + ']; path: [' + self.path + ']'
 
 if __name__ == "__main__":
-    parse_input()
+    parse_cmdline()
