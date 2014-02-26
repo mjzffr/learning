@@ -4,7 +4,7 @@ import os.path
 import sys
 import socket
 import math
-# I'm not using urlib on purpose, for learning
+# I'm not using urlib on purpose!
 
 def parse_input():
     usage = "Usage:" + sys.argv[0] + " URL. URL must start with 'http://'"
@@ -15,13 +15,14 @@ def parse_input():
         urlString = sys.argv[1].replace('http://', '', 1)
         # URL object stores domain and path separately
         url = URL(urlString)
-        download(url)
+        filename = os.path.basename(url.path)
+        if filename: download(url, filename) 
+        else: print 'URL does not specify a file.'
     else: 
         print usage
 
-
-def download(url):
-    ''' downloads file pointed to by URL object '''
+def download(url, filename):
+    ''' downloads file pointed to by URL `url` to str `filename` '''
     DELIMITER = '\r\n'
     # create an INET, STREAMing socket
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -42,63 +43,52 @@ def download(url):
 
     # distinguish http response from its payload
     firstpiece = s.recv(1024)
-    if firstpiece.count(DELIMITER * 2) == 0:
-        # not an HTTP response?
+    if firstpiece.find(DELIMITER * 2) == -1 or \
+        not firstpiece.startswith('HTTP'):
+        print "Not an HTTP response?!"
         s.close()
-        raise Exception #TODO
- 
+        sys.exit()
+        
     # parse the response
     (httpresponse, data) = tuple(firstpiece.split(DELIMITER * 2, 1))
     (codestring,headerstring) = tuple(httpresponse.split(DELIMITER,1))
+
+    # check response codes TODO
+    if codestring.find('200') == -1:
+        print codestring
+        s.close()
+        sys.exit()
+
     headerlist = headerstring.split(DELIMITER)
     headers = {h[0].strip(): h[1].strip() for h in \
         [i.split(':', 1) for i in headerlist if i.find(':') != -1]}
 
-    # check response codes TODO
-
+    
     # get content length
-    total_size = int(headers['Content-Length'])
+    try:
+        total_size = int(headers['Content-Length'])
+    except KeyError as e:
+        print str(e) + ' not found'
+        s.close()
+        sys.exit()
 
-    # make a file name
+    # download pieces
     filename = os.path.basename(url.path)
-
     downloaded = len(data)
     with open(filename, 'w') as fp:
         fp.write(data)
-        while True:
+        while downloaded < total_size:
             data = s.recv(4096)
+            if not data:
+                print 'Connection lost?'
+                break
             downloaded += len(data)
             print str(int(math.floor(float(downloaded) / \
                 total_size * 100))) + '%'
-            if not data:
-                print "Done"
-                break
             fp.write(data)
         
     s.close()
 
-
-    # set up a file to download to
-    # assuming it's a text file (for windows); otherwise mode need 'b'
-    # with ensures the file is closed when this block is done
-    #with open('file1', 'w') as fp:
-        # do stuff
-         # while True:
-   #              chunk = req.read(CHUNK)
-   #              downloaded += len(chunk)
-   #              print math.floor( (downloaded / total_size) * 100 )
-   #              if not chunk: break
-   #              fp.write(chunk)
-
-
-''' Example HTTP request (observed with wireshark on real wget):
-    GET /~mfrydrychowicz/data/movies-mpaa.txt HTTP/1.1\r\n
-    User-Agent: Wget/1.13.4 (linux-gnu)\r\n             # pywget (linux-gnu)?
-    Accept: */*\r\n                                     # accept any media type
-    Host: sonic.dawsoncollege.qc.ca\r\n                 # repeats URL content
-    Connection: Keep-Alive\r\n
-    \r\n
-'''
 
 def get_progress_str():
     pass
