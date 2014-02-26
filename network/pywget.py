@@ -96,8 +96,9 @@ def writefile(data, total_size, filename):
                 print 'Connection lost?'
                 break
             downloaded += len(data)
-            print str(int(math.floor(float(downloaded) / \
-                total_size * 100))) + '%'
+            # using '\r' print in place
+            print ('\r' + str(int(math.floor(float(downloaded) / total_size * 
+                   100))) + '%'),
             fp.write(data)
 
 
